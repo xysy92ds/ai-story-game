@@ -1,9 +1,9 @@
 import { neon } from '@neondatabase/serverless';
 
-let _sql: ReturnType<typeof neon> | null = null;
+let _sql: any = null;
 let schemaReady = false;
 
-export function getDb() {
+export function getDb(): any {
   if (!_sql) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error('缺少环境变量 DATABASE_URL（Neon 连接串）');

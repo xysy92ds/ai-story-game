@@ -45,9 +45,9 @@ export function isWaitingRoomExpired(room: RoomRow): boolean {
 
 export async function cleanupExpiredRooms(): Promise<void> {
   const sql = getDb();
-  await sql`DELETE FROM rooms WHERE status = 'waiting' AND created_at < now() - ${WAITING_ROOM_TTL_MINUTES} * interval '1 minute'` as any[];
-  await sql`DELETE FROM rooms WHERE created_at < now() - interval '1 minute' AND status <> 'finished' AND id NOT IN (SELECT DISTINCT room_id FROM players)` as any[];
-  await sql`UPDATE rooms SET resolving = false, resolve_started_at = NULL WHERE resolving = true AND resolve_started_at IS NOT NULL AND resolve_started_at < now() - ${RESOLVE_STALE_MINUTES} * interval '1 minute'` as any[];
+  await sql`DELETE FROM rooms WHERE status = 'waiting' AND created_at < now() - ${WAITING_ROOM_TTL_MINUTES} * interval '1 minute'`;
+  await sql`DELETE FROM rooms WHERE created_at < now() - interval '1 minute' AND status <> 'finished' AND id NOT IN (SELECT DISTINCT room_id FROM players)`;
+  await sql`UPDATE rooms SET resolving = false, resolve_started_at = NULL WHERE resolving = true AND resolve_started_at IS NOT NULL AND resolve_started_at < now() - ${RESOLVE_STALE_MINUTES} * interval '1 minute'`;
 }
 
 export interface CreateRoomInput {
@@ -75,8 +75,8 @@ export async function createRoom(input: CreateRoomInput) {
   await sql`
     INSERT INTO rooms (id, code, name, host_id, world_setting, custom_world, ai_provider, ai_model, api_key_enc, max_players, status)
     VALUES (${roomId}, ${code}, ${input.roomName}, ${playerId}, ${input.worldSetting}, ${input.customWorld || ''}, ${input.aiProvider}, ${input.aiModel}, ${encryptApiKey(apiKey)}, ${input.maxPlayers}, 'waiting')
-  ` as any[];
-  await sql`INSERT INTO players (id, room_id, name, is_host) VALUES (${playerId}, ${roomId}, ${input.playerName}, true)` as any[];
+  `;
+  await sql`INSERT INTO players (id, room_id, name, is_host) VALUES (${playerId}, ${roomId}, ${input.playerName}, true)`;
   return { roomCode: code, playerId, playerName: input.playerName };
 }
 
@@ -84,7 +84,7 @@ async function generateUniqueRoomCode(): Promise<string> {
   const sql = getDb();
   for (let i = 0; i < 10; i++) {
     const code = generateRoomCode();
-    const rows = await sql`SELECT 1 FROM rooms WHERE code = ${code}` as any[];
+    const rows = await sql`SELECT 1 FROM rooms WHERE code = ${code}`;
     if (rows.length === 0) return code;
   }
   throw new ApiError('房间号生成失败，请重试');
@@ -92,12 +92,12 @@ async function generateUniqueRoomCode(): Promise<string> {
 
 export async function joinRoom(code: string, playerName: string, playerId?: string | null) {
   const sql = getDb();
-  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}`;
   if (rooms.length === 0) throw new ApiError('房间不存在，请检查房间号', 404);
   const room = rooms[0] as RoomRow;
   await cleanupExpiredRooms();
   if (room.status === 'waiting' && isWaitingRoomExpired(room)) {
-    await sql`DELETE FROM rooms WHERE id = ${room.id}` as any[];
+    await sql`DELETE FROM rooms WHERE id = ${room.id}`;
     throw new ApiError('房间已过期（20 分钟未开局），已自动删除', 404);
   }
   if (room.status !== 'waiting') throw new ApiError('游戏已经开始，无法加入');
@@ -106,33 +106,33 @@ export async function joinRoom(code: string, playerName: string, playerId?: stri
   let finalPlayerId = playerId || '';
   if (existing.length > 0) {
     finalPlayerId = existing[0].id;
-    await sql`UPDATE players SET name = ${playerName}, last_active = now() WHERE id = ${finalPlayerId}` as any[];
+    await sql`UPDATE players SET name = ${playerName}, last_active = now() WHERE id = ${finalPlayerId}`;
   } else {
-    const players = await sql`SELECT * FROM players WHERE room_id = ${room.id}` as any[];
+    const players = await sql`SELECT * FROM players WHERE room_id = ${room.id}`;
     if (players.length >= room.max_players) throw new ApiError('房间已满员');
     finalPlayerId = randomUUID();
-    await sql`INSERT INTO players (id, room_id, name, is_host) VALUES (${finalPlayerId}, ${room.id}, ${playerName}, false)` as any[];
+    await sql`INSERT INTO players (id, room_id, name, is_host) VALUES (${finalPlayerId}, ${room.id}, ${playerName}, false)`;
   }
-  await sql`UPDATE rooms SET last_activity = now() WHERE id = ${room.id}` as any[];
+  await sql`UPDATE rooms SET last_activity = now() WHERE id = ${room.id}`;
   return { roomCode: room.code, playerId: finalPlayerId, playerName };
 }
 
 export async function getRoomState(code: string, me?: string) {
   const sql = getDb();
-  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}`;
   if (rooms.length === 0) throw new ApiError('房间不存在', 404);
   const room = rooms[0] as RoomRow;
   await cleanupExpiredRooms();
   if (room.status === 'waiting' && isWaitingRoomExpired(room)) {
-    await sql`DELETE FROM rooms WHERE id = ${room.id}` as any[];
+    await sql`DELETE FROM rooms WHERE id = ${room.id}`;
     throw new ApiError('房间已过期（20 分钟未开局），已自动删除', 404);
   }
-  const players = await sql`SELECT id, name, is_host FROM players WHERE room_id = ${room.id} ORDER BY joined_at ASC` as any[];
+  const players = await sql`SELECT id, name, is_host FROM players WHERE room_id = ${room.id} ORDER BY joined_at ASC`;
   if (me && room.status !== 'finished' && players.length > 0 && !players.some((p: any) => p.id === me)) {
     throw new ApiError('你已不在这个房间（被移出或已离开）', 403);
   }
   const story = safeParseStory(room.story_json);
-  const actions = await sql`SELECT player_id, player_name, content FROM actions WHERE room_id = ${room.id} AND round = ${room.current_round} ORDER BY created_at ASC` as any[];
+  const actions = await sql`SELECT player_id, player_name, content FROM actions WHERE room_id = ${room.id} AND round = ${room.current_round} ORDER BY created_at ASC`;
   return {
     room: serializeRoom(room),
     players: players.map((p: any) => ({ id: p.id, name: p.name, isHost: !!p.is_host }) as PlayerInfo),
@@ -172,19 +172,19 @@ export function safeParseStory(json: string): StorySegment[] {
 
 export async function startGame(code: string, playerId: string) {
   const sql = getDb();
-  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}`;
   if (rooms.length === 0) throw new ApiError('房间不存在', 404);
   const room = rooms[0] as RoomRow;
   if (room.status !== 'waiting') throw new ApiError('房间不在等待状态');
   if (room.host_id !== playerId) throw new ApiError('只有房主可以开始游戏', 403);
 
-  const players = await sql`SELECT * FROM players WHERE room_id = ${room.id}` as any[];
+  const players = await sql`SELECT * FROM players WHERE room_id = ${room.id}`;
   if (players.length < MIN_PLAYERS) throw new ApiError(`至少需要 ${MIN_PLAYERS} 名玩家才能开始`);
 
   const claimed = await sql`
     UPDATE rooms SET status = 'playing', started_at = now(), resolving = true, resolve_started_at = now(), last_activity = now()
     WHERE id = ${room.id} AND status = 'waiting' RETURNING id
-  ` as any[];
+  `;
   if (claimed.length === 0) throw new ApiError('房间状态已变化，请刷新后重试', 409);
 
   let openingText = fallbackOpening(room);
@@ -216,18 +216,18 @@ export async function startGame(code: string, playerId: string) {
   await sql`
     UPDATE rooms SET story_json = ${JSON.stringify([segment])}, current_round = 1, resolving = false, resolve_started_at = NULL, last_activity = now()
     WHERE id = ${room.id}
-  ` as any[];
+  `;
   return true;
 }
 
 export async function submitAction(code: string, playerId: string, content: string) {
   const sql = getDb();
-  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}`;
   if (rooms.length === 0) throw new ApiError('房间不存在', 404);
   const room = rooms[0] as RoomRow;
   if (room.status !== 'playing') throw new ApiError('游戏尚未开始或已结束');
 
-  const players = await sql`SELECT * FROM players WHERE id = ${playerId} AND room_id = ${room.id}` as any[];
+  const players = await sql`SELECT * FROM players WHERE id = ${playerId} AND room_id = ${room.id}`;
   if (players.length === 0) throw new ApiError('你不在这个房间里', 403);
   const player = players[0];
   const round = room.current_round;
@@ -236,12 +236,12 @@ export async function submitAction(code: string, playerId: string, content: stri
     INSERT INTO actions (id, room_id, round, player_id, player_name, content, created_at)
     VALUES (${randomUUID()}, ${room.id}, ${round}, ${player.id}, ${player.name}, ${content}, now())
     ON CONFLICT (room_id, round, player_id) DO UPDATE SET content = ${content}, created_at = now()
-  ` as any[];
-  await sql`UPDATE players SET last_active = now() WHERE id = ${playerId}` as any[];
-  await sql`UPDATE rooms SET last_activity = now() WHERE id = ${room.id}` as any[];
+  `;
+  await sql`UPDATE players SET last_active = now() WHERE id = ${playerId}`;
+  await sql`UPDATE rooms SET last_activity = now() WHERE id = ${room.id}`;
 
-  const submitted = await sql`SELECT COUNT(*)::int AS c FROM actions WHERE room_id = ${room.id} AND round = ${round}` as any[];
-  const total = await sql`SELECT COUNT(*)::int AS c FROM players WHERE room_id = ${room.id}` as any[];
+  const submitted = await sql`SELECT COUNT(*)::int AS c FROM actions WHERE room_id = ${room.id} AND round = ${round}`;
+  const total = await sql`SELECT COUNT(*)::int AS c FROM players WHERE room_id = ${room.id}`;
   if (Number(submitted[0].c) >= Number(total[0].c) && Number(total[0].c) >= MIN_PLAYERS) {
     await resolveRoundIfPossible(room.id);
   }
@@ -253,12 +253,12 @@ export async function resolveRoundIfPossible(roomId: string): Promise<boolean> {
   const claimed = await sql`
     UPDATE rooms SET resolving = true, resolve_started_at = now(), last_activity = now()
     WHERE id = ${roomId} AND resolving = false RETURNING id
-  ` as any[];
+  `;
   if (claimed.length === 0) return false;
-  const rooms = await sql`SELECT * FROM rooms WHERE id = ${roomId}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE id = ${roomId}`;
   const room = rooms[0] as RoomRow;
   if (!room || room.status !== 'playing') {
-    await sql`UPDATE rooms SET resolving = false, resolve_started_at = NULL WHERE id = ${roomId}` as any[];
+    await sql`UPDATE rooms SET resolving = false, resolve_started_at = NULL WHERE id = ${roomId}`;
     return false;
   }
   try {
@@ -272,7 +272,7 @@ export async function resolveRoundIfPossible(roomId: string): Promise<boolean> {
 
 export async function hostResolveRound(code: string, playerId: string): Promise<boolean> {
   const sql = getDb();
-  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}`;
   if (rooms.length === 0) throw new ApiError('房间不存在', 404);
   const room = rooms[0] as RoomRow;
   if (room.status !== 'playing') throw new ApiError('当前状态无法结算');
@@ -282,7 +282,7 @@ export async function hostResolveRound(code: string, playerId: string): Promise<
 
 async function resolveRound(room: RoomRow) {
   const sql = getDb();
-  const actionsRows = await sql`SELECT player_id, player_name, content FROM actions WHERE room_id = ${room.id} AND round = ${room.current_round} ORDER BY created_at ASC` as any[];
+  const actionsRows = await sql`SELECT player_id, player_name, content FROM actions WHERE room_id = ${room.id} AND round = ${room.current_round} ORDER BY created_at ASC`;
   const actions: RoundAction[] = actionsRows.map((a: any) => ({ playerId: a.player_id, playerName: a.player_name, content: a.content }));
   const history = safeParseStory(room.story_json);
   const apiKey = decryptApiKey(room.api_key_enc);
@@ -309,12 +309,12 @@ async function resolveRound(room: RoomRow) {
   await sql`
     UPDATE rooms SET story_json = ${JSON.stringify(newHistory)}, current_round = ${room.current_round + 1}, resolving = false, resolve_started_at = NULL, last_activity = now()
     WHERE id = ${room.id}
-  ` as any[];
+  `;
 }
 
 async function saveFallbackSegment(room: RoomRow) {
   const sql = getDb();
-  const actionsRows = await sql`SELECT player_name, content FROM actions WHERE room_id = ${room.id} AND round = ${room.current_round} ORDER BY created_at ASC` as any[];
+  const actionsRows = await sql`SELECT player_name, content FROM actions WHERE room_id = ${room.id} AND round = ${room.current_round} ORDER BY created_at ASC`;
   const history = safeParseStory(room.story_json);
   const world = getWorld(room.world_setting);
   const outcomes: Record<string, string> = {};
@@ -330,52 +330,52 @@ async function saveFallbackSegment(room: RoomRow) {
   await sql`
     UPDATE rooms SET story_json = ${JSON.stringify(newHistory)}, current_round = ${room.current_round + 1}, resolving = false, resolve_started_at = NULL, last_activity = now()
     WHERE id = ${room.id}
-  ` as any[];
+  `;
 }
 
 export async function closeRoom(code: string, playerId: string) {
   const sql = getDb();
-  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}`;
   if (rooms.length === 0) throw new ApiError('房间不存在', 404);
   const room = rooms[0] as RoomRow;
   if (room.host_id !== playerId) throw new ApiError('只有房主可以解散房间', 403);
-  await sql`DELETE FROM rooms WHERE id = ${room.id}` as any[];
+  await sql`DELETE FROM rooms WHERE id = ${room.id}`;
   return true;
 }
 
 export async function leaveRoom(code: string, playerId: string) {
   const sql = getDb();
-  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}`;
   if (rooms.length === 0) return true;
   const room = rooms[0] as RoomRow;
-  await sql`DELETE FROM players WHERE id = ${playerId} AND room_id = ${room.id}` as any[];
+  await sql`DELETE FROM players WHERE id = ${playerId} AND room_id = ${room.id}`;
   if (room.host_id === playerId) {
-    await sql`DELETE FROM rooms WHERE id = ${room.id}` as any[];
+    await sql`DELETE FROM rooms WHERE id = ${room.id}`;
     return true;
   }
-  await sql`UPDATE rooms SET last_activity = now() WHERE id = ${room.id}` as any[];
+  await sql`UPDATE rooms SET last_activity = now() WHERE id = ${room.id}`;
   return true;
 }
 
 export async function endGame(code: string, playerId: string) {
   const sql = getDb();
-  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}`;
   if (rooms.length === 0) throw new ApiError('房间不存在', 404);
   const room = rooms[0] as RoomRow;
   if (room.host_id !== playerId) throw new ApiError('只有房主可以结束游戏', 403);
-  await sql`UPDATE rooms SET status = 'finished', ended_at = now(), resolving = false, resolve_started_at = NULL, last_activity = now() WHERE id = ${room.id}` as any[];
+  await sql`UPDATE rooms SET status = 'finished', ended_at = now(), resolving = false, resolve_started_at = NULL, last_activity = now() WHERE id = ${room.id}`;
   return true;
 }
 
 export async function kickPlayer(code: string, hostId: string, targetPlayerId: string) {
   const sql = getDb();
-  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}` as any[];
+  const rooms = await sql`SELECT * FROM rooms WHERE code = ${code.toUpperCase()}`;
   if (rooms.length === 0) throw new ApiError('房间不存在', 404);
   const room = rooms[0] as RoomRow;
   if (room.host_id !== hostId) throw new ApiError('只有房主可以移出玩家', 403);
   if (targetPlayerId === hostId) throw new ApiError('不能移出自己');
-  await sql`DELETE FROM players WHERE id = ${targetPlayerId} AND room_id = ${room.id}` as any[];
-  await sql`DELETE FROM actions WHERE room_id = ${room.id} AND round = ${room.current_round} AND player_id = ${targetPlayerId}` as any[];
-  await sql`UPDATE rooms SET last_activity = now() WHERE id = ${room.id}` as any[];
+  await sql`DELETE FROM players WHERE id = ${targetPlayerId} AND room_id = ${room.id}`;
+  await sql`DELETE FROM actions WHERE room_id = ${room.id} AND round = ${room.current_round} AND player_id = ${targetPlayerId}`;
+  await sql`UPDATE rooms SET last_activity = now() WHERE id = ${room.id}`;
   return true;
 }
