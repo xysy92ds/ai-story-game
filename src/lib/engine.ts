@@ -324,7 +324,7 @@ async function saveFallbackSegment(room: RoomRow) {
     timestamp: new Date().toISOString(),
     world_events: `世界的齿轮仍在转动，${world?.name ?? '这个世界'}的局势变得更加扑朔迷离。`,
     player_outcomes: outcomes,
-    narrative: `【世界动态】${world?.name ?? '这个世界'}暗流涌动，新的势力正在暗中布局。${NL}【玩家行动】${actionsRows.map((a) => `${a.player_name}：${a.content}`).join('；')}${NL}（本轮结算出现异常，故事由系统临时接续，请继续你们的冒险。）`,
+    narrative: `【世界动态】${world?.name ?? '这个世界'}暗流涌动，新的势力正在暗中布局。${NL}【玩家行动】${actionsRows.map((a: any) => `${a.player_name}：${a.content}`).join('；')}${NL}（本轮结算出现异常，故事由系统临时接续，请继续你们的冒险。）`,
   };
   const newHistory = [...history, segment];
   await sql`
