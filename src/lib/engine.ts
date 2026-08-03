@@ -7,6 +7,7 @@ import {
   buildOpeningUserMessage,
   buildResolveUserMessage,
   fallbackOpening,
+  NL,
   OPENING_SYSTEM_PROMPT,
   parseOpeningOutput,
   parseStoryOutput,

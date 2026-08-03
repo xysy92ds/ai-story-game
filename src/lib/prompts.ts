@@ -1,9 +1,16 @@
 import type { RoomRow, RoundAction, StorySegment } from './types';
 import { getWorld } from './world';
 
-const NL = String.fromCharCode(10);
-const NL2 = NL + NL;
+// ============================================================
+// 提示词配置区 —— 所有游戏文案都在这里，可随意修改。
+// 本地 npm run dev 会热更新；线上改完重新部署即可生效。
+// ============================================================
 
+// 换行常量：用 String.fromCharCode 生成，避免复制时转义符 \n 被破坏导致编译失败
+export const NL = String.fromCharCode(10);
+export const NL2 = NL + NL;
+
+/** 开场提示词：房主开始游戏时，AI 生成故事开场 */
 export const OPENING_SYSTEM_PROMPT = `你是一位顶级文字冒险游戏的开场旁白者。一场由多位玩家共同参与的群体叙事即将开始。
 请为以下世界观撰写一段引人入胜的开场。
 
@@ -15,6 +22,7 @@ export const OPENING_SYSTEM_PROMPT = `你是一位顶级文字冒险游戏的开
 5. 只输出一个 JSON 对象，不要输出任何其他内容：
 { "opening": "开场叙述文本" }`;
 
+/** 回合结算提示词：AI 作为故事编辑，推进世界并回应每位玩家的行动 */
 export const STORY_EDITOR_SYSTEM_PROMPT = `你是一位顶级的文字冒险游戏主持人（Game Master）与故事编辑。你正在主持一场由多位真人玩家共同推动的"群体叙事"游戏。
 
 【世界观】
@@ -44,6 +52,7 @@ export const STORY_EDITOR_SYSTEM_PROMPT = `你是一位顶级的文字冒险游�
 - 若某位玩家未提交行动，可让其在故事中保持待机或遭遇偶发事件，但不要让其凭空消失。
 - 不要替玩家做决定、不要替玩家说话（他们的内心独白除外），只呈现他们行动带来的结果。`;
 
+/** 组装"回合结算"的用户消息 */
 export function buildResolveUserMessage(room: RoomRow, history: StorySegment[], actions: RoundAction[]): string {
   const world = getWorld(room.world_setting);
   const worldName = world?.name ?? room.world_setting;
@@ -63,6 +72,7 @@ export function buildResolveUserMessage(room: RoomRow, history: StorySegment[], 
   return `【世界观】${worldName}：${worldDesc}${NL}${worldExtra}${NL}${NL}【故事历史】${NL}${historyText}${NL}${NL}【第 ${room.current_round} 回合 · 玩家行动】${NL}${actionsText}${NL}${NL}请扮演故事编辑，依据上述历史与行动推进故事，并严格按照系统提示输出 JSON。`;
 }
 
+/** 组装"开场"的用户消息 */
 export function buildOpeningUserMessage(room: RoomRow, playerNames: string[]): string {
   const world = getWorld(room.world_setting);
   const worldName = world?.name ?? room.world_setting;
@@ -71,6 +81,7 @@ export function buildOpeningUserMessage(room: RoomRow, playerNames: string[]): s
   return `【世界观】${worldName}：${worldDesc}${worldExtra}${NL}【参与玩家】${playerNames.join('、')}${NL}请为这个世界撰写开场，只输出 JSON 对象 { "opening": "..." }。`;
 }
 
+/** AI 生成开场失败时的兜底文案（不消耗 token） */
 export function fallbackOpening(room: RoomRow): string {
   const world = getWorld(room.world_setting);
   const worldName = world?.name ?? room.world_setting;
@@ -78,18 +89,23 @@ export function fallbackOpening(room: RoomRow): string {
   return `【${worldName}】${NL}${hook}${NL}你们彼此对视，知道自己正站在一段伟大（或疯狂）故事的开端。`;
 }
 
+/** 容错解析 AI 返回的 JSON */
 function tryParseJson(raw: string): Record<string, unknown> | null {
   const text = raw.trim();
   try {
     const v = JSON.parse(text);
     if (v && typeof v === 'object') return v as Record<string, unknown>;
-  } catch {}
+  } catch {
+    /* 忽略 */
+  }
   const m = text.match(/\{[\s\S]*\}/);
   if (m) {
     try {
       const v = JSON.parse(m[0]);
       if (v && typeof v === 'object') return v as Record<string, unknown>;
-    } catch {}
+    } catch {
+      /* 忽略 */
+    }
   }
   return null;
 }
@@ -111,7 +127,7 @@ function composeNarrative(worldEvents: string, outcomes: Record<string, string>)
 export function parseStoryOutput(raw: string, actions: RoundAction[]): {
   world_events: string;
   player_outcomes: Record<string, string>;
-narrative: string;
+  narrative: string;
 } {
   const obj = tryParseJson(raw);
   const worldEvents = asString(obj?.world_events ?? obj?.world_event ?? obj?.worldEvents ?? '');
@@ -119,16 +135,19 @@ narrative: string;
   const outcomesRaw = obj?.player_outcomes ?? obj?.playerOutcomes ?? obj?.outcomes ?? {};
   const playerOutcomes: Record<string, string> = {};
   for (const a of actions) {
-    const v = outcomesRaw && typeof outcomesRaw === 'object'
-      ? (outcomesRaw as Record<string, unknown>)[a.player_name] ??
-        (outcomesRaw as Record<string, unknown>)[a.player_id] ?? ''
-      : '';
+    const v =
+      outcomesRaw && typeof outcomesRaw === 'object'
+        ? (outcomesRaw as Record<string, unknown>)[a.player_name] ??
+          (outcomesRaw as Record<string, unknown>)[a.player_id] ??
+          ''
+        : '';
     playerOutcomes[a.player_name] = asString(v);
   }
   const narrative = narrativeRaw || composeNarrative(worldEvents, playerOutcomes);
   return { world_events: worldEvents, player_outcomes: playerOutcomes, narrative };
 }
 
+/** 解析开场输出 */
 export function parseOpeningOutput(raw: string): string {
   const obj = tryParseJson(raw);
   const opening = asString(obj?.opening ?? obj?.text ?? '');
