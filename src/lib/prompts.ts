@@ -67,7 +67,7 @@ export function buildResolveUserMessage(room: RoomRow, history: StorySegment[], 
   const actionsText =
     actions.length === 0
       ? '（本回合没有任何玩家提交行动，请让世界继续运转，并给玩家们制造新的机遇或危机。）'
-      : actions.map((a) => `- ${a.player_name}：${a.content}`).join(NL);
+      : actions.map((a) => `- ${a.playerName}：${a.content}`).join(NL);
 
   return `【世界观】${worldName}：${worldDesc}${NL}${worldExtra}${NL}${NL}【故事历史】${NL}${historyText}${NL}${NL}【第 ${room.current_round} 回合 · 玩家行动】${NL}${actionsText}${NL}${NL}请扮演故事编辑，依据上述历史与行动推进故事，并严格按照系统提示输出 JSON。`;
 }
@@ -137,11 +137,11 @@ export function parseStoryOutput(raw: string, actions: RoundAction[]): {
   for (const a of actions) {
     const v =
       outcomesRaw && typeof outcomesRaw === 'object'
-        ? (outcomesRaw as Record<string, unknown>)[a.player_name] ??
-          (outcomesRaw as Record<string, unknown>)[a.player_id] ??
+        ? (outcomesRaw as Record<string, unknown>)[a.playerName] ??
+          (outcomesRaw as Record<string, unknown>)[a.playerId] ??
           ''
         : '';
-    playerOutcomes[a.player_name] = asString(v);
+    playerOutcomes[a.playerName] = asString(v);
   }
   const narrative = narrativeRaw || composeNarrative(worldEvents, playerOutcomes);
   return { world_events: worldEvents, player_outcomes: playerOutcomes, narrative };
