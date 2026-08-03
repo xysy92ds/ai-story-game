@@ -33,7 +33,9 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export function generateRoomCode(): string {
   const bytes = randomBytes(6);
   let code = '';
-  for (const b of bytes) code += CODE_ALPHABET[b % CODE_ALPHABET.length];
+  for (let i = 0; i < bytes.length; i++) {
+    code += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+  }
   return code;
 }
 
